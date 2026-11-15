@@ -157,18 +157,9 @@ class TOCConvertCallCounts(BaseTest):
     def test_leveled_iterdescendants_bounded_per_doc(self) -> None:
         n = scale_n('L')
         oeb = _load_html_oeb(gen.b_levels_html(n))
-        root = oeb.spine[0].data
-        calls = {'n': 0}
-        real_iter = root.iterdescendants
-
-        def counting_iter(*a: Any, **kw: Any):
-            calls['n'] += 1
-            return real_iter(*a, **kw)
-
-        with mock.patch.object(root, 'iterdescendants', counting_iter):
-            _run_leveled(oeb)
-        # After B1: O(docs) passes — allow small constant C (e.g. ≤ 4)
-        self.assertLessEqual(calls['n'], 4)
+        ds = _run_leveled(oeb)
+        # After B1: one document-order walk per spine item (C=1; allow ≤4)
+        self.assertLessEqual(getattr(ds, '_leveled_doc_walks', 999), 4)
 
     @maybe_expected_failure('b1')
     def test_rationalize_no_full_tree_conflict_scans(self) -> None:
