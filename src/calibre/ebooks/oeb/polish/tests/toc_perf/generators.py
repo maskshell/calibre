@@ -349,13 +349,13 @@ def b_levels_path(scale: str, fmt: Literal['md', 'html'] = 'html') -> str:
 
 
 def b_sony_stub_note() -> str:
-    '''Stub: B-sony EPUB2 with many #frag TOC entries — filled in PR-B2 tests.'''
-    return 'B-sony: use b_levels_html + DetectStructure TOC then EPUB2 output with fragments'
+    '''B-sony: leveled HTML TOC with many #frag entries for workaround_sony_quirks.'''
+    return 'B-sony: b_levels_html + DetectStructure + EPUBOutput.workaround_sony_quirks'
 
 
 def b_inline_stub_note() -> str:
-    '''Stub: B-inline with epub_inline_toc — filled in PR-B2 tests.'''
-    return 'B-inline: TOCAdder path with epub_inline_toc / count() gate'
+    '''B-inline: TOCAdder process_toc_node should use toc.nodes not count().'''
+    return 'B-inline: TOCAdder process_toc_node uses toc.nodes'
 
 
 LEVEL_TOC_OPTS = [
