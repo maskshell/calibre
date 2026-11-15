@@ -31,7 +31,7 @@ def gates_enabled(feature: str) -> bool:
     if specific in {'0', 'false', 'no'}:
         return False
     # Defaults after product PRs land in-tree; corpus-only red path uses xfail when False
-    return feature == 'a1'
+    return feature in {'a1', 'b1'}
 
 
 def maybe_expected_failure(feature: str) -> Callable[[Callable], Callable]:
