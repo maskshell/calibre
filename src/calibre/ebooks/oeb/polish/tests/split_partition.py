@@ -3,9 +3,12 @@
 
 from lxml import etree
 
+from collections import OrderedDict
+
 from calibre.ebooks.oeb.base import XHTML_NS
 from calibre.ebooks.oeb.polish.split import do_split, partition_by_body_siblings
 from calibre.ebooks.oeb.polish.tests.base import BaseTest
+from calibre.ebooks.oeb.transforms.split import resolve_page_break_elements
 from calibre.utils.logging import DevNull
 
 
@@ -63,3 +66,23 @@ class TestSiblingPartition(BaseTest):
         self.assertIn('Chapter 1', bt)
         self.assertNotIn('Chapter 2', bt)
         self.assertIn('Chapter 2', at)
+
+    def test_resolve_page_break_elements_preserves_order(self) -> None:
+        tree = _flat_book_html(4)
+        root = tree.getroot()
+        # Dummy patterns (unused by resolve); before flags alternate.
+        ordered = OrderedDict(
+            [
+                ('c2', (None, True)),
+                ('c4', (None, False)),
+                ('c3', (None, True)),
+                ('missing', (None, True)),
+            ]
+        )
+        specs = resolve_page_break_elements(ordered, root)
+        self.assertEqual(['c2', 'c4', 'c3'], [e.get('id') for e, _ in specs])
+        self.assertEqual([True, False, True], [b for _, b in specs])
+        parts = partition_by_body_siblings(tree, specs, DevNull())
+        self.assertIsNotNone(parts)
+        assert parts is not None
+        self.assertGreaterEqual(len(parts), 3)

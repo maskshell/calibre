@@ -42,6 +42,32 @@ XPath = functools.partial(_XPath, namespaces=NAMESPACES)
 SPLIT_POINT_ATTR = 'csp'
 
 
+def resolve_page_break_elements(
+    ordered_ids: OrderedDict[str, tuple[object, bool]],
+    root: _Element,
+) -> list[tuple[_Element, bool]]:
+    """Map page-break ids to elements with one document walk (O(D+N)).
+
+    Completes the sibling-partition fast path: callers used to resolve each
+    break with ``//*[@id=…]`` (O(N×D)), which dominated TOC-options converts
+    on large flat Markdown bodies while partition itself stayed cheap.
+    """
+    wanted = frozenset(ordered_ids)
+    id_to_elem: dict[str, _Element] = {}
+    for elem in root.iter('*'):
+        eid = elem.get('id')
+        if eid is not None and eid in wanted and eid not in id_to_elem:
+            id_to_elem[eid] = elem
+            if len(id_to_elem) == len(wanted):
+                break
+    specs: list[tuple[_Element, bool]] = []
+    for pb_id, (_pattern, before) in ordered_ids.items():
+        elem = id_to_elem.get(pb_id)
+        if elem is not None:
+            specs.append((elem, before))
+    return specs
+
+
 def tostring(root: _Element) -> bytes:
     return etree.tostring(root, encoding='utf-8')
 
@@ -310,21 +336,21 @@ class FlowSplitter:
     def split_on_page_breaks(self, orig_tree: _ElementTree) -> None:
         ordered_ids: OrderedDict[str, PageBreak] = OrderedDict()
         all_page_break_ids = frozenset(self.page_break_ids)
+        pb_by_id = dict(zip(self.page_break_ids, self.page_breaks, strict=True))
         for elem_id in orig_tree.xpath('//*/@id'):
             if elem_id in all_page_break_ids:
-                ordered_ids[elem_id] = self.page_breaks[self.page_break_ids.index(elem_id)]
+                ordered_ids[elem_id] = pb_by_id[elem_id]
 
         self.trees = [orig_tree]
         # Fast path: many page breaks on a flat <body> (typical Markdown novels).
         # Partition body siblings once instead of N× full-tree do_split deepcopies.
         # Supports mixed page-break-before / page-break-after (chapter_mark=pagebreak).
         if len(ordered_ids) > 1:
-            specs: list[tuple[_Element, bool]] = []
-            for pb_id, (pattern, before) in ordered_ids.items():
-                matches = pattern(orig_tree)
-                if matches:
-                    specs.append((matches[0], before))
-                    self.log.debug(f'\t\tQueued page-break at id={pb_id} before={before}')
+            specs = resolve_page_break_elements(ordered_ids, orig_tree.getroot())
+            for elem, before in specs:
+                self.log.debug(
+                    f'\t\tQueued page-break at id={elem.get("id")} before={before}'
+                )
             if specs:
                 partitioned = partition_by_body_siblings(orig_tree, specs, self.log)
                 if partitioned is not None:
