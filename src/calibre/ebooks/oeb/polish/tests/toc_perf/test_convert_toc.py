@@ -172,12 +172,52 @@ class TOCConvertCallCounts(BaseTest):
         toc.rationalize_play_orders()
 
     @maybe_expected_failure('b2')
-    def test_b_sony_stub_gate(self) -> None:
-        self.skipTest(gen.b_sony_stub_note() + ' (implemented in PR-B2)')
+    def test_b_sony_spine_lookups_bounded(self) -> None:
+        '''B-sony: indexed spine lookups are O(N) not O(N × spine).'''
+        from calibre.ebooks.conversion.plugins.epub_output import EPUBOutput
+        from calibre.utils.logging import DevNull
+
+        n = scale_n('M')
+        oeb = _load_html_oeb(gen.b_levels_html(n))
+        _run_leveled(oeb)
+        spine_href = oeb.spine[0].href
+        for node in oeb.toc.iterdescendants():
+            frag = (node.href or '').partition('#')[-1] or 'x'
+            node.href = f'{spine_href}#{frag}'
+        plugin = object.__new__(EPUBOutput)
+        plugin.oeb = oeb
+        plugin.log = DevNull()
+        plugin.workaround_sony_quirks()
+        self.assertLessEqual(plugin._sony_spine_lookups, oeb.toc.count() + 1)
 
     @maybe_expected_failure('b2')
-    def test_b_inline_stub_gate(self) -> None:
-        self.skipTest(gen.b_inline_stub_note() + ' (implemented in PR-B2)')
+    def test_b_inline_tocadder_avoids_count(self) -> None:
+        '''B-inline: TOCAdder must not call toc.count() while walking nodes.'''
+        from calibre.ebooks.mobi.writer8.toc import TEMPLATE, TOCAdder
+        from calibre.ebooks.oeb.base import XHTML_NS
+        from calibre.utils.xml_parse import safe_xml_fromstring
+
+        toc = TOC()
+        for i in range(30):
+            parent = toc.add(f'L1-{i}', f'f.xhtml#a{i}', play_order=i + 1)
+            for j in range(3):
+                parent.add(f'L2-{i}-{j}', f'f.xhtml#b{i}-{j}', play_order=1000 + i * 3 + j)
+
+        calls = {'n': 0}
+        real_count = TOC.count
+
+        def counting_count(self: TOC) -> int:
+            calls['n'] += 1
+            return real_count(self)
+
+        adder = TOCAdder.__new__(TOCAdder)
+        adder.tocitem = None
+        root = safe_xml_fromstring(TEMPLATE.format(xhtmlns=XHTML_NS, title='T', embed_css='', extra_css=''))
+        parent = root.xpath('//*[local-name()="ul"]')[0]
+        with mock.patch.object(TOC, 'count', counting_count):
+            for child in toc:
+                adder.process_toc_node(child, parent)
+        self.assertEqual(calls['n'], 0)
 
 
 class TOCConvertBaselines(BaseTest):
